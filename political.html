@@ -177,11 +177,13 @@
         const API_ASSET_BASE = 'https://www.gocomics.com/api/service/v2/assets/recent/';
 
         const TODAY = new Date();
-        // Fino alle 10 UTC mostra solo i fumetti del giorno precedente
+        // Fino alle 10 UTC mostra i fumetti del giorno precedente; dalle 10 UTC quelli di oggi
         const BEFORE_10_UTC = TODAY.getUTCHours() < 10;
         const VIEW_DATE = new Date(TODAY);
-        VIEW_DATE.setDate(TODAY.getDate() - 1); // Inizio del giorno precedente
-        const VIEW_END = BEFORE_10_UTC ? new Date(TODAY) : null; // Esclude i fumetti di oggi
+        VIEW_DATE.setDate(TODAY.getDate() - (BEFORE_10_UTC ? 1 : 0));
+        VIEW_DATE.setHours(0, 0, 0, 0); // Mezzanotte locale del giorno di riferimento
+        const VIEW_END = new Date(VIEW_DATE);
+        VIEW_END.setDate(VIEW_END.getDate() + 1); // Fine del giorno di riferimento
 
         // Embedded political comics list (deduplicated)
         const POLITICAL_SLUGS = [...new Set(`algoodwyn
@@ -354,7 +356,7 @@ political-cartoons`.trim().split('\n').map(s => s.trim()).filter(Boolean))];
                     if (!assets || assets.length === 0) return;
                     const asset = assets[0];
                     const assetDate = new Date(asset.originalDate);
-                    if (asset.isRerun || assetDate < VIEW_DATE || (VIEW_END !== null && assetDate >= VIEW_END)) return;
+                    if (asset.isRerun || assetDate < VIEW_DATE || assetDate >= VIEW_END) return;
                     renderComicCard(slugs[i], asset, container);
                 });
 
