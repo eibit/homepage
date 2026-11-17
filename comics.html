@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GoComics Pro Viewer</title>
+    <style>
+        /* Variabili per i Temi */
+        :root {
+            --bg-color: #f4f4f9;
+            --card-bg: #ffffff;
+            --text-color: #333333;
+            --accent-color: #007bff;
+            --border-color: #dddddd;
+            --star-color: #ccc;
+            --star-active: #ffc107;
+        }
+
+        [data-theme="dark"] {
+            --bg-color: #121212;
+            --card-bg: #1e1e1e;
+            --text-color: #e0e0e0;
+            --accent-color: #4dabff;
+            --border-color: #333333;
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            transition: background-color 0.3s, color 0.3s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        header {
+            width: 100%;
+            max-width: 800px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .page-selector {
+            display: flex;
+            gap: 5px;
+        }
+
+        .page-selector a {
+            padding: 8px 15px;
+            border-radius: 5px;
+            border: 1px solid var(--border-color);
+            background: var(--card-bg);
+            color: var(--text-color);
+            cursor: pointer;
+        }
+
+        .page-selector a.active {
+            background: var(--accent-color);
+            color: #fff;
+            border-color: var(--accent-color);
+        }
+
+	a, a:visited, a:hover, a:active { 
+		color: inherit;
+		text-decoration: none;
+	}
+
+        button {
+            padding: 8px 15px;
+            cursor: pointer;
+            border-radius: 5px;
+            border: 1px solid var(--border-color);
+            background: var(--card-bg);
+            color: var(--text-color);
+        }
+
+        #comic-container {
+            width: 100%;
+            max-width: 800px;
+        }
+
+        .comic-card {
+            background: var(--card-bg);
+            margin-bottom: 30px;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            text-align: center;
+            border: 1px solid var(--border-color);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .comic-slug {
+            font-weight: bold;
+            font-size: 1.3rem;
+            color: var(--accent-color);
+            text-transform: uppercase;
+        }
+
+        .fav-btn {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: var(--star-color);
+            cursor: pointer;
+            transition: transform 0.2s;
+            padding: 0;
+        }
+
+        .fav-btn.active { color: var(--star-active); }
+        .fav-btn:hover { transform: scale(1.2); }
+
+        .ban-btn {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            transition: transform 0.2s;
+            padding: 0;
+            opacity: 0.3;
+        }
+
+        .ban-btn:hover { transform: scale(1.2); opacity: 1; }
+
+        #footer {
+            width: 100%;
+            max-width: 800px;
+            text-align: center;
+            margin: 10px 0 30px;
+        }
+
+        .comic-image {
+            max-width: 100%;
+            height: auto;
+            border-radius: 4px;
+        }
+
+        .status-msg { margin: 20px; font-style: italic; opacity: 0.7; }
+    </style>
+</head>
+<body data-theme="light">
+
+    <header>
+        <h1>GoComics Pro</h1>
+        <div class="controls">
+            <div class="page-selector">
+                <a href="comics.html" class="active">All</a>
+                <a href="political.html">Political</a>
+            </div>
+            <button onclick="toggleDarkMode()">🌓 Tema</button>
+        </div>
+    </header>
+
+    <div id="status" class="status-msg">Inizializzazione...</div>
+    <div id="comic-container"></div>
+    <div id="footer"></div>
+
+    <script>
+        const API_FEATURES = 'https://www.gocomics.com/api/service/v1/features';
+        const API_ASSET_BASE = 'https://www.gocomics.com/api/service/v2/assets/recent/';
+
+	const TODAY = new Date(); // Cattura la data e l'ora attuale del sistema
+	const VIEW_DATE = new Date();
+	VIEW_DATE.setDate(TODAY.getDate() - 1); // Sottrae x giorni esatti
+
+        let favorites = JSON.parse(localStorage.getItem('comic-favs')) || [];
+        let blacklist = JSON.parse(localStorage.getItem('comic-blacklist')) || [];
+
+        // Inizializzazione Tema
+        if (localStorage.getItem('theme') === 'dark') {
+            document.body.setAttribute('data-theme', 'dark');
+        }
+
+        function toggleDarkMode() {
+            const current = document.body.getAttribute('data-theme');
+            const next = current === 'light' ? 'dark' : 'light';
+            document.body.setAttribute('data-theme', next);
+            localStorage.setItem('theme', next);
+        }
+
+        function banComic(slug, cardElement) {
+            blacklist.push(slug);
+            localStorage.setItem('comic-blacklist', JSON.stringify(blacklist));
+            cardElement.remove();
+        }
+
+        function clearBlacklist() {
+            blacklist = [];
+            localStorage.removeItem('comic-blacklist');
+            location.reload();
+        }
+
+        function toggleFavorite(slug, btnElement) {
+            if (favorites.includes(slug)) {
+                favorites = favorites.filter(s => s !== slug);
+                btnElement.classList.remove('active');
+            } else {
+                favorites.push(slug);
+                btnElement.classList.add('active');
+            }
+            localStorage.setItem('comic-favs', JSON.stringify(favorites));
+        }
+
+        async function init() {
+            const container = document.getElementById('comic-container');
+            const status = document.getElementById('status');
+
+            try {
+                const response = await fetch(API_FEATURES);
+                let features = await response.json();
+                
+                // --- ORDINAMENTO AVANZATO ---
+                // Filtra gli esclusi
+                features = features.filter(item => !blacklist.includes(item.slug));
+
+                // 1. Ordine alfabetico base
+                features.sort((a, b) => a.slug.localeCompare(b.slug));
+                
+                // 2. Sposta i preferiti in alto
+                features.sort((a, b) => {
+                    const aFav = favorites.includes(a.slug);
+                    const bFav = favorites.includes(b.slug);
+                    return (aFav === bFav) ? 0 : aFav ? -1 : 1;
+                });
+
+                status.innerText = `Caricamento fumetti (Preferiti in alto)...`;
+
+                for (const item of features) {
+                    await fetchAndRenderComic(item.slug, container);
+                }
+
+                status.innerText = "Feed aggiornato.";
+                if (blacklist.length > 0) {
+                    document.getElementById('footer').innerHTML =
+                        `<button onclick="clearBlacklist()">↩ Riammetti tutti gli esclusi (${blacklist.length})</button>`;
+                }
+            } catch (error) {
+                status.innerText = "Errore di caricamento.";
+            }
+        }
+
+        async function fetchAndRenderComic(slug, container) {
+            try {
+                const res = await fetch(`${API_ASSET_BASE}${slug}`);
+                if (!res.ok) return;
+                const assets = await res.json();
+                
+                if (assets && assets.length > 0) {
+                    const asset = assets[0];
+                    const assetDate = new Date(asset.originalDate);
+
+                    if (asset.isRerun || assetDate < VIEW_DATE) return;
+
+                    const isFav = favorites.includes(slug);
+                    const card = document.createElement('div');
+                    card.className = 'comic-card';
+                    card.innerHTML = `
+                        <div class="card-header">
+                            <button class="fav-btn ${isFav ? 'active' : ''}"
+                                    onclick="toggleFavorite('${slug}', this)">★</button>
+                            <span class="comic-slug"><a href='artist.html?slug=${slug}' target="_blank">${slug}</a></span>
+                            <button class="ban-btn" onclick="banComic('${slug}', this.closest('.comic-card'))" title="Escludi">🚫</button>
+                        </div>
+			<div style="font-size: 0.8rem; color: #888; margin-bottom: 8px;">Data Originale: ${assetDate.toLocaleDateString()}</div>
+                        <img class="comic-image" src="${asset.url}" alt="${slug}" loading="lazy">
+                    `;
+                    container.appendChild(card);
+                }
+            } catch (err) {}
+        }
+
+        init();
+    </script>
+</body>
+</html>
