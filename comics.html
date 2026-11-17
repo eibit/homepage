@@ -178,8 +178,11 @@
         const API_ASSET_BASE = 'https://www.gocomics.com/api/service/v2/assets/recent/';
 
 	const TODAY = new Date(); // Cattura la data e l'ora attuale del sistema
-	const VIEW_DATE = new Date();
-	VIEW_DATE.setDate(TODAY.getDate() - 1); // Sottrae x giorni esatti
+	// Fino alle 10 UTC mostra solo i fumetti del giorno precedente
+	const BEFORE_10_UTC = TODAY.getUTCHours() < 10;
+	const VIEW_DATE = new Date(TODAY);
+	VIEW_DATE.setDate(TODAY.getDate() - 1); // Inizio del giorno precedente
+	const VIEW_END = BEFORE_10_UTC ? new Date(TODAY) : null; // Esclude i fumetti di oggi
 
         let favorites = JSON.parse(localStorage.getItem('comic-favs')) || [];
         let blacklist = JSON.parse(localStorage.getItem('comic-blacklist')) || [];
@@ -274,8 +277,9 @@
                 });
 
                 const slugs = features.map(item => item.slug);
+                const DAY_LABEL = BEFORE_10_UTC ? ' (giorno precedente)' : '';
                 let loaded = 0;
-                status.innerText = `Caricamento fumetti: 0/${slugs.length}...`;
+                status.innerText = `Caricamento fumetti${DAY_LABEL}: 0/${slugs.length}...`;
 
                 // Caricamento parallelo con limite di concorrenza
                 const assetsBySlug = await fetchWithConcurrency(slugs, MAX_CONCURRENT, async (slug) => {
@@ -287,7 +291,7 @@
                         return null;
                     } finally {
                         loaded++;
-                        status.innerText = `Caricamento fumetti: ${loaded}/${slugs.length}...`;
+                        status.innerText = `Caricamento fumetti${DAY_LABEL}: ${loaded}/${slugs.length}...`;
                     }
                 });
 
@@ -296,7 +300,7 @@
                     if (!assets || assets.length === 0) return;
                     const asset = assets[0];
                     const assetDate = new Date(asset.originalDate);
-                    if (asset.isRerun || assetDate < VIEW_DATE) return;
+                    if (asset.isRerun || assetDate < VIEW_DATE || (VIEW_END !== null && assetDate >= VIEW_END)) return;
                     renderComicCard(slugs[i], asset, container);
                 });
 

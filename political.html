@@ -177,8 +177,11 @@
         const API_ASSET_BASE = 'https://www.gocomics.com/api/service/v2/assets/recent/';
 
         const TODAY = new Date();
-        const VIEW_DATE = new Date();
-        VIEW_DATE.setDate(TODAY.getDate() - 1);
+        // Fino alle 10 UTC mostra solo i fumetti del giorno precedente
+        const BEFORE_10_UTC = TODAY.getUTCHours() < 10;
+        const VIEW_DATE = new Date(TODAY);
+        VIEW_DATE.setDate(TODAY.getDate() - 1); // Inizio del giorno precedente
+        const VIEW_END = BEFORE_10_UTC ? new Date(TODAY) : null; // Esclude i fumetti di oggi
 
         // Embedded political comics list (deduplicated)
         const POLITICAL_SLUGS = [...new Set(`algoodwyn
@@ -327,8 +330,9 @@ political-cartoons`.trim().split('\n').map(s => s.trim()).filter(Boolean))];
                 return (aFav === bFav) ? 0 : aFav ? -1 : 1;
             });
 
+            const DAY_LABEL = BEFORE_10_UTC ? ' (giorno precedente)' : '';
             let loaded = 0;
-            status.innerText = `Caricamento fumetti politici: 0/${slugs.length}...`;
+            status.innerText = `Caricamento fumetti politici${DAY_LABEL}: 0/${slugs.length}...`;
 
             try {
                 // Caricamento parallelo con limite di concorrenza
@@ -341,7 +345,7 @@ political-cartoons`.trim().split('\n').map(s => s.trim()).filter(Boolean))];
                         return null;
                     } finally {
                         loaded++;
-                        status.innerText = `Caricamento fumetti politici: ${loaded}/${slugs.length}...`;
+                        status.innerText = `Caricamento fumetti politici${DAY_LABEL}: ${loaded}/${slugs.length}...`;
                     }
                 });
 
@@ -350,7 +354,7 @@ political-cartoons`.trim().split('\n').map(s => s.trim()).filter(Boolean))];
                     if (!assets || assets.length === 0) return;
                     const asset = assets[0];
                     const assetDate = new Date(asset.originalDate);
-                    if (asset.isRerun || assetDate < VIEW_DATE) return;
+                    if (asset.isRerun || assetDate < VIEW_DATE || (VIEW_END !== null && assetDate >= VIEW_END)) return;
                     renderComicCard(slugs[i], asset, container);
                 });
 
