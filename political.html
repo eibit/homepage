@@ -283,6 +283,38 @@ political-cartoons`.trim().split('\n').map(s => s.trim()).filter(Boolean))];
             localStorage.setItem('comic-favs', JSON.stringify(favorites));
         }
 
+        const MAX_CONCURRENT = 12;
+
+        async function fetchWithConcurrency(items, limit, fn) {
+            const results = new Array(items.length);
+            let next = 0;
+            async function worker() {
+                while (next < items.length) {
+                    const i = next++;
+                    results[i] = await fn(items[i]);
+                }
+            }
+            await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
+            return results;
+        }
+
+        function renderComicCard(slug, asset, container) {
+            const isFav = favorites.includes(slug);
+            const card = document.createElement('div');
+            card.className = 'comic-card';
+            card.innerHTML = `
+                <div class="card-header">
+                    <button class="fav-btn ${isFav ? 'active' : ''}"
+                            onclick="toggleFavorite('${slug}', this)">★</button>
+                    <span class="comic-slug"><a href='artist.html?slug=${slug}' target="_blank">${slug}</a></span>
+                    <button class="ban-btn" onclick="banComic('${slug}', this.closest('.comic-card'))" title="Escludi">🚫</button>
+                </div>
+                <div style="font-size: 0.8rem; color: #888; margin-bottom: 8px;">Data Originale: ${new Date(asset.originalDate).toLocaleDateString()}</div>
+                <img class="comic-image" src="${asset.url}" alt="${slug}" loading="lazy">
+            `;
+            container.appendChild(card);
+        }
+
         async function init() {
             const container = document.getElementById('comic-container');
             const status = document.getElementById('status');
@@ -295,12 +327,33 @@ political-cartoons`.trim().split('\n').map(s => s.trim()).filter(Boolean))];
                 return (aFav === bFav) ? 0 : aFav ? -1 : 1;
             });
 
-            status.innerText = `Caricamento fumetti politici (Preferiti in alto)...`;
+            let loaded = 0;
+            status.innerText = `Caricamento fumetti politici: 0/${slugs.length}...`;
 
             try {
-                for (const slug of slugs) {
-                    await fetchAndRenderComic(slug, container);
-                }
+                // Caricamento parallelo con limite di concorrenza
+                const assetsBySlug = await fetchWithConcurrency(slugs, MAX_CONCURRENT, async (slug) => {
+                    try {
+                        const res = await fetch(`${API_ASSET_BASE}${slug}`);
+                        if (!res.ok) return null;
+                        return await res.json();
+                    } catch (err) {
+                        return null;
+                    } finally {
+                        loaded++;
+                        status.innerText = `Caricamento fumetti politici: ${loaded}/${slugs.length}...`;
+                    }
+                });
+
+                // Render in ordine (preferiti in alto, poi alfabetico)
+                assetsBySlug.forEach((assets, i) => {
+                    if (!assets || assets.length === 0) return;
+                    const asset = assets[0];
+                    const assetDate = new Date(asset.originalDate);
+                    if (asset.isRerun || assetDate < VIEW_DATE) return;
+                    renderComicCard(slugs[i], asset, container);
+                });
+
                 status.innerText = "Feed aggiornato.";
                 if (blacklist.length > 0) {
                     document.getElementById('footer').innerHTML =
@@ -309,36 +362,6 @@ political-cartoons`.trim().split('\n').map(s => s.trim()).filter(Boolean))];
             } catch (error) {
                 status.innerText = "Errore di caricamento.";
             }
-        }
-
-        async function fetchAndRenderComic(slug, container) {
-            try {
-                const res = await fetch(`${API_ASSET_BASE}${slug}`);
-                if (!res.ok) return;
-                const assets = await res.json();
-
-                if (assets && assets.length > 0) {
-                    const asset = assets[0];
-                    const assetDate = new Date(asset.originalDate);
-
-                    if (asset.isRerun || assetDate < VIEW_DATE) return;
-
-                    const isFav = favorites.includes(slug);
-                    const card = document.createElement('div');
-                    card.className = 'comic-card';
-                    card.innerHTML = `
-                        <div class="card-header">
-                            <button class="fav-btn ${isFav ? 'active' : ''}"
-                                    onclick="toggleFavorite('${slug}', this)">★</button>
-                            <span class="comic-slug"><a href='artist.html?slug=${slug}' target="_blank">${slug}</a></span>
-                            <button class="ban-btn" onclick="banComic('${slug}', this.closest('.comic-card'))" title="Escludi">🚫</button>
-                        </div>
-                        <div style="font-size: 0.8rem; color: #888; margin-bottom: 8px;">Data Originale: ${assetDate.toLocaleDateString()}</div>
-                        <img class="comic-image" src="${asset.url}" alt="${slug}" loading="lazy">
-                    `;
-                    container.appendChild(card);
-                }
-            } catch (err) {}
         }
 
         init();
